@@ -77,10 +77,14 @@ class EpsilonController:
         self.min_max_diff = init_eps - min_eps
         self.min_eps = min_eps
         self.epsilon_decay = epsilon_decay
+        self.steps = 0
 
-    def get_epsilon(self, steps: int) -> float:
-        return self.min_eps + (self.min_max_diff) * np.exp(-1.0 * steps /
+    def get_epsilon(self) -> float:
+        return self.min_eps + (self.min_max_diff) * np.exp(-1.0 * self.steps /
                                                            self.epsilon_decay)
+
+    def decay(self) -> None:
+        self.steps += 1
 
 
 class Agent:
@@ -109,8 +113,8 @@ class Agent:
         self.trace = dict()
         self.reset_trace()
 
-    def choose_action_train(self, state: np.ndarray, steps: int) -> int:
-        epsilon = self.epsiloncontroller.get_epsilon(steps)
+    def choose_action_train(self, state: np.ndarray) -> int:
+        epsilon = self.epsiloncontroller.get_epsilon()
         if np.random.random() > epsilon:
             state = torch.as_tensor(state, dtype=torch.float32)
             return self.network.forward(state).argmax().item()
@@ -150,20 +154,19 @@ if __name__ == "__main__":
     )
     episodes = 150
 
-    steps = 0
     for i in range(episodes):
         state = env.reset()
         done = False
         loss = 0
         score = 0
         while not done:
-            action = agent.choose_action_train(state, steps)
+            action = agent.choose_action_train(state)
+            agent.epsiloncontroller.decay()
             next_state, reward, done, _ = env.step(action)
             if agent.replaybuffer.is_ready():
                 loss = agent.train()
             agent.replaybuffer.store(state, action, reward, next_state, done)
             score += reward
-            steps += 1
             state = next_state
         agent.reset_trace()
         print(f"Iteration: {i + 1}, Score: {score}, Loss: {loss}")
